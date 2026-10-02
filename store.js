@@ -1,4 +1,4 @@
-// Armazena APENAS mensagens de contatos permitidos (ALLOWED_CONTACTS, padrão: "uber").
+// Armazena APENAS mensagens de contatos/grupos permitidos (ALLOWED_CONTACTS, padrão: "uber").
 // Mensagens de qualquer outra conversa são descartadas na entrada — minimização de dados.
 import { normalizeMessageContent } from '@whiskeysockets/baileys';
 
@@ -24,6 +24,16 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
     if (!c?.id) return;
     const names = [c.name, c.notify, c.verifiedName].filter(Boolean).join(' | ').toLowerCase();
     if (names) contactNames.set(c.id, names);
+  }
+
+  // Registra um grupo cujo assunto (subject/name) bate com ALLOWED_CONTACTS.
+  function registerGroup(g) {
+    const jid = g?.id;
+    if (!jid || !jid.endsWith('@g.us') || allowedJids.has(jid)) return false;
+    if (!nameMatches([g.subject, g.name])) return false;
+    allowedJids.add(jid);
+    redis.sadd(KEY_JIDS, jid).catch(() => {});
+    return true;
   }
 
   function extractText(m) {
@@ -52,9 +62,11 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
   // Retorna true se a mensagem foi armazenada.
   async function handleMessage(m) {
     const jid = m.key?.remoteJid;
-    if (!jid || jid === 'status@broadcast' || jid.endsWith('@g.us') || jid.endsWith('@newsletter')) return false;
+    if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter')) return false;
 
     if (!allowedJids.has(jid)) {
+      // Grupos só entram pelo nome (assunto), registrado em registerGroup().
+      if (jid.endsWith('@g.us')) return false;
       const names = [m.key.fromMe ? null : m.pushName, m.verifiedBizName, contactNames.get(jid)];
       if (!nameMatches(names)) return false;
       allowedJids.add(jid);
@@ -108,5 +120,5 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
     return { stored_messages: await redis.zcard(KEY_MSGS), tracked_chats: allowedJids.size };
   }
 
-  return { init, rememberContact, handleMessage, getRecent, prune, stats };
+  return { init, rememberContact, registerGroup, handleMessage, getRecent, prune, stats };
 }

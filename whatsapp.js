@@ -72,6 +72,15 @@ export function createWhatsApp({ redis, store, pairingPhone, log }) {
         status.lastOpenAt = new Date().toISOString();
         retries = 0;
         log.info('WhatsApp conectado');
+        // Procura grupos cujo assunto bate com ALLOWED_CONTACTS.
+        current
+          .groupFetchAllParticipating()
+          .then((groups) => {
+            let matched = 0;
+            for (const g of Object.values(groups || {})) if (store.registerGroup(g)) matched++;
+            log.info({ matched }, 'grupos verificados');
+          })
+          .catch((e) => log.warn({ err: e.message }, 'falha ao listar grupos'));
       }
 
       if (connection === 'close') {
@@ -104,8 +113,12 @@ export function createWhatsApp({ redis, store, pairingPhone, log }) {
     current.ev.on('contacts.upsert', (cs) => cs.forEach((c) => store.rememberContact(c)));
     current.ev.on('contacts.update', (cs) => cs.forEach((c) => store.rememberContact(c)));
 
-    current.ev.on('messaging-history.set', async ({ contacts, messages }) => {
+    current.ev.on('groups.upsert', (gs) => gs.forEach((g) => store.registerGroup(g)));
+    current.ev.on('groups.update', (gs) => gs.forEach((g) => store.registerGroup(g)));
+
+    current.ev.on('messaging-history.set', async ({ chats, contacts, messages }) => {
       (contacts || []).forEach((c) => store.rememberContact(c));
+      (chats || []).forEach((c) => store.registerGroup(c));
       let saved = 0;
       for (const m of messages || []) if (await store.handleMessage(m).catch(() => false)) saved++;
       log.info({ saved }, 'histórico inicial processado');
