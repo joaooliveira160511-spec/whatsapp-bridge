@@ -11,9 +11,21 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
   let allowedJids = new Set();
   const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone, dateStyle: 'short', timeStyle: 'short' });
 
+  // Normaliza para comparar: minúsculas; qualquer símbolo vira "|" (o hífen "-" é mantido);
+  // espaços unicode (inclusive NBSP) colapsam e não sobra espaço ao redor de "|".
+  const norm = (s) =>
+    String(s)
+      .toLowerCase()
+      .replace(/[\u2010-\u2015]/g, '-')
+      .replace(/[^\p{L}\p{N}\s-]/gu, '|')
+      .replace(/\s+/g, ' ')
+      .replace(/ ?\| ?/g, '|')
+      .trim();
+  const wanted = allowedContacts.map(norm).filter(Boolean);
+
   const nameMatches = (names) => {
-    const hay = names.filter(Boolean).join(' | ').toLowerCase();
-    return hay && allowedContacts.some((a) => hay.includes(a));
+    const hay = norm(names.filter(Boolean).join(' | '));
+    return Boolean(hay) && wanted.some((a) => hay.includes(a));
   };
 
   async function init() {

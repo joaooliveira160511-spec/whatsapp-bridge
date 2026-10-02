@@ -77,10 +77,8 @@ export function createWhatsApp({ redis, store, pairingPhone, log }) {
           .groupFetchAllParticipating()
           .then((groups) => {
             const list = Object.values(groups || {});
-            let matched = 0;
-            for (const g of list) if (store.registerGroup(g)) matched++;
-            const hints = list.map((g) => g.subject).filter((s) => /uber|cefet/i.test(s || '')).slice(0, 5);
-            log.info({ total: list.length, matched, hints }, 'grupos verificados');
+            const matchedSubjects = list.filter((g) => store.registerGroup(g)).map((g) => g.subject);
+            log.info({ total: list.length, matched: matchedSubjects.length, matchedSubjects }, 'grupos verificados');
           })
           .catch((e) => log.warn({ err: e.message }, 'falha ao listar grupos'));
       }
