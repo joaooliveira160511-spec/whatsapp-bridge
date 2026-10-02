@@ -76,9 +76,11 @@ export function createWhatsApp({ redis, store, pairingPhone, log }) {
         current
           .groupFetchAllParticipating()
           .then((groups) => {
+            const list = Object.values(groups || {});
             let matched = 0;
-            for (const g of Object.values(groups || {})) if (store.registerGroup(g)) matched++;
-            log.info({ matched }, 'grupos verificados');
+            for (const g of list) if (store.registerGroup(g)) matched++;
+            const hints = list.map((g) => g.subject).filter((s) => /uber|cefet/i.test(s || '')).slice(0, 5);
+            log.info({ total: list.length, matched, hints }, 'grupos verificados');
           })
           .catch((e) => log.warn({ err: e.message }, 'falha ao listar grupos'));
       }
@@ -124,9 +126,16 @@ export function createWhatsApp({ redis, store, pairingPhone, log }) {
       log.info({ saved }, 'histórico inicial processado');
     });
 
+    // Grupos ainda desconhecidos: consulta o assunto uma vez por conexão.
+    const checkedGroups = new Set();
     current.ev.on('messages.upsert', async ({ messages }) => {
       for (const m of messages) {
         try {
+          const jid = m.key?.remoteJid;
+          if (jid?.endsWith('@g.us') && !store.isTracked(jid) && !checkedGroups.has(jid)) {
+            checkedGroups.add(jid);
+            store.registerGroup(await current.groupMetadata(jid).catch(() => null));
+          }
           await store.handleMessage(m);
         } catch (e) {
           log.error({ err: e.message }, 'erro ao processar mensagem');

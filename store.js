@@ -28,8 +28,9 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
 
   // Registra um grupo cujo assunto (subject/name) bate com ALLOWED_CONTACTS.
   function registerGroup(g) {
-    const jid = g?.id;
-    if (!jid || !jid.endsWith('@g.us') || allowedJids.has(jid)) return false;
+    if (!g?.id) return false;
+    const jid = g.id.includes('@') ? g.id : g.id + '@g.us';
+    if (!jid.endsWith('@g.us') || allowedJids.has(jid)) return false;
     if (!nameMatches([g.subject, g.name])) return false;
     allowedJids.add(jid);
     redis.sadd(KEY_JIDS, jid).catch(() => {});
@@ -120,5 +121,7 @@ export function createStore(redis, { allowedContacts, retentionDays, timeZone })
     return { stored_messages: await redis.zcard(KEY_MSGS), tracked_chats: allowedJids.size };
   }
 
-  return { init, rememberContact, registerGroup, handleMessage, getRecent, prune, stats };
+  const isTracked = (jid) => allowedJids.has(jid);
+
+  return { init, rememberContact, registerGroup, isTracked, handleMessage, getRecent, prune, stats };
 }
